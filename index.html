@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>题渊幸存者 · 把背诵材料变成 Roguelike</title>
+<style>
+:root{
+  --bg:#0d1022; --bg2:#151a33; --card:#1c2244; --card2:#232a52;
+  --ink:#eef1ff; --sub:#9aa3c7; --line:#2e3564;
+  --neon:#7c6cff; --cyan:#2fd8fe; --ok:#2fd675; --bad:#ff5d6c; --gold:#ffc44d; --hp:#ff5d6c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#1c2452 0%,var(--bg) 60%);color:var(--ink);min-height:100vh;line-height:1.6}
+.app{max-width:560px;margin:0 auto;padding:16px 14px 40px}
+.screen{display:none}.screen.on{display:block}
+h1{font-size:26px;letter-spacing:2px;text-align:center;margin:18px 0 4px;background:linear-gradient(90deg,var(--cyan),var(--neon),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.slogan{text-align:center;color:var(--sub);font-size:13px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:12px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stat{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;min-width:90px}
+.stat .n{font-size:20px;font-weight:800;color:var(--cyan)}
+.stat .t{font-size:11.5px;color:var(--sub)}
+.btn{display:block;width:100%;border:none;border-radius:14px;padding:14px;font-size:17px;font-weight:700;color:#fff;cursor:pointer;margin:10px 0;font-family:inherit;letter-spacing:2px;transition:transform .08s,filter .15s}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(135deg,var(--neon),#5a8bff)}
+.btn.primary:hover{filter:brightness(1.12)}
+.btn.ghost{background:var(--bg2);border:1px solid var(--line);color:var(--sub);font-size:14px;padding:10px}
+.btn.ghost:hover{color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:default}
+.hint{font-size:12px;color:var(--sub);text-align:center;margin-top:8px}
+/* 战斗 */
+.topbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px}
+.hearts{font-size:18px;letter-spacing:2px;white-space:nowrap}
+.pill{background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px;color:var(--sub);white-space:nowrap}
+.pill b{color:var(--ink)}
+.pill.combo b{color:var(--gold)}
+.timerwrap{height:10px;background:var(--bg2);border-radius:999px;overflow:hidden;border:1px solid var(--line);margin-bottom:14px}
+.timerbar{height:100%;width:100%;background:linear-gradient(90deg,var(--cyan),var(--neon));transition:width .1s linear}
+.timerbar.low{background:linear-gradient(90deg,var(--bad),var(--gold))}
+.qcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px;min-height:120px;font-size:17px;line-height:2}
+.qcard .blank{color:var(--cyan);font-weight:800;letter-spacing:1px;border-bottom:2px solid var(--cyan);padding:0 6px}
+.qcard .sentfull{font-size:13px;color:var(--sub);line-height:1.7;border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.opt{background:var(--card2);border:1.5px solid var(--line);border-radius:12px;padding:13px 8px;font-size:16px;font-weight:600;color:var(--ink);cursor:pointer;text-align:center;font-family:inherit;transition:transform .08s,border-color .1s}
+.opt:active{transform:scale(.96)}
+.opt:hover{border-color:var(--neon)}
+.opt.right{border-color:var(--ok);background:rgba(47,214,117,.15);color:var(--ok)}
+.opt.wrong{border-color:var(--bad);background:rgba(255,93,108,.15);color:var(--bad)}
+.opt.dim{opacity:.3;pointer-events:none}
+.opt kbd{display:inline-block;font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-right:5px;vertical-align:1px}
+.feed{height:26px;margin-top:12px;text-align:center;font-size:14px;font-weight:700}
+.feed.ok{color:var(--ok)}.feed.bad{color:var(--bad)}
+.buffs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.buff{font-size:11.5px;background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--gold)}
+.waveTag{text-align:center;color:var(--sub);font-size:12.5px;margin-top:10px}
+.waveTag.boss{color:var(--bad);font-weight:800;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.5}}
+/* buff 三选一 */
+.mask{position:fixed;inset:0;background:rgba(8,10,25,.86);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.mask.on{display:flex}
+.mask .inner{max-width:420px;width:100%}
+.buffcards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
+.bcard{background:var(--card);border:1.5px solid var(--gold);border-radius:14px;padding:16px;cursor:pointer;transition:transform .1s}
+.bcard:hover{transform:translateY(-3px)}
+.bcard .bn{font-size:17px;font-weight:800;color:var(--gold)}
+.bcard .bd{font-size:13px;color:var(--sub);margin-top:4px}
+/* 结算/图鉴 */
+.resTitle{text-align:center;font-size:24px;font-weight:800;margin:20px 0 6px;color:var(--gold)}
+.resGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.codexGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:52vh;overflow:auto;padding:2px}
+.kp{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13.5px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.kp mastered{border-color:var(--ok)}
+.kp.m{border-left:3px solid var(--ok)}
+.kp.w{border-left:3px solid var(--bad)}
+.kp.u{border-left:3px solid var(--line);color:var(--sub)}
+.kp .tag{font-size:10.5px;border-radius:999px;padding:0 7px;white-space:nowrap}
+.kp.m .tag{background:rgba(47,214,117,.15);color:var(--ok)}
+.kp.w .tag{background:rgba(255,93,108,.15);color:var(--bad)}
+.kp.u .tag{background:var(--bg2);color:var(--sub)}
+.legend{font-size:12px;color:var(--sub);display:flex;gap:14px;margin-top:6px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.streakFire{color:var(--gold);font-weight:800}
+@media (max-width:400px){.opts{grid-template-columns:1fr}.qcard{font-size:15.5px}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ============ 主页 ============ -->
+<section id="scr-home" class="screen on">
+  <h1>题渊幸存者</h1>
+  <p class="slogan">上传材料 → 自动抽空出题 → 限时对局中背下来</p>
+  <div class="card">
+    <div class="row">
+      <div class="stat"><div class="n" id="h-streak">0</div><div class="t">连续打卡 <span class="streakFire">🔥</span></div></div>
+      <div class="stat"><div class="n" id="h-kp">0/0</div><div class="t">知识图鉴</div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="stat"><div class="n" id="h-bank" style="color:var(--gold)">0</div><div class="t">积分（祭坛货币）</div></div>
+      <div class="stat"><div class="n" id="h-deep">0</div><div class="t">最深波次</div></div>
+      <div class="stat"><div class="n" id="h-best">0</div><div class="t">最高分</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-size:14px;color:var(--sub)">当前材料：<b id="h-material" style="color:var(--ink)">《广东省"十五五"规划纲要》</b></div>
+    <div style="font-size:12.5px;color:var(--sub);margin-top:4px" id="h-qcount">题库生成中…</div>
+  </div>
+  <button class="btn primary" id="b-start">⚔ 进入题渊</button>
+  <button class="btn ghost" id="b-codex">📖 知识图鉴</button>
+  <button class="btn ghost" id="b-shop">🏛 深渊祭坛 · 花积分买开局加持</button>
+  <div class="card" style="margin-top:16px">
+    <div style="font-size:13.5px;color:var(--sub);margin-bottom:8px">换一份材料（.txt，UTF-8）：</div>
+    <input type="file" id="f-mat" accept=".txt,.md,text/plain" style="font-size:12px;color:var(--sub);max-width:100%">
+    <div class="hint">规则式抽空，全部离线本地处理，材料不上传任何服务器</div>
+  </div>
+</section>
+
+<!-- ============ 对局 ============ -->
+<section id="scr-battle" class="screen">
+  <div class="topbar">
+    <div class="hearts" id="t-hp">❤❤❤</div>
+    <div class="pill">第 <b id="t-wave">1</b> 波</div>
+    <div class="pill combo">连击 <b id="t-combo">0</b></div>
+    <div class="pill">得分 <b id="t-score">0</b></div>
+  </div>
+  <div class="buffs" id="t-buffs"></div>
+  <div class="timerwrap"><div class="timerbar" id="t-bar"></div></div>
+  <div class="qcard" id="t-q"></div>
+  <div class="opts" id="t-opts"></div>
+  <div class="feed" id="t-feed"></div>
+  <div class="waveTag" id="t-tag"></div>
+</section>
+
+<!-- ============ buff 三选一 ============ -->
+<div class="mask" id="mask-buff">
+  <div class="inner">
+    <div id="mask-title" style="text-align:center;font-size:20px;font-weight:800;color:var(--gold)">✨ 波次奖励 · 三选一</div>
+    <div class="buffcards" id="buff-cards"></div>
+  </div>
+</div>
+
+<!-- ============ 结算 ============ -->
+<section id="scr-result" class="screen">
+  <div class="resTitle" id="r-title">对局结束</div>
+  <p class="hint" id="r-streak"></p>
+  <div class="resGrid">
+    <div class="stat"><div class="n" id="r-score">0</div><div class="t">本局得分</div></div>
+    <div class="stat"><div class="n" id="r-wave">0</div><div class="t">坚持波次</div></div>
+    <div class="stat"><div class="n" id="r-combo">0</div><div class="t">最长连击</div></div>
+    <div class="stat"><div class="n" id="r-newkp">0</div><div class="t">本局图鉴点亮</div></div>
+  </div>
+  <div class="card"><div class="legend" id="r-miss"></div></div>
+  <button class="btn primary" id="b-again">再来一局</button>
+  <button class="btn ghost" id="b-home">回主页</button>
+</section>
+
+<!-- ============ 深渊祭坛（积分商店） ============ -->
+<section id="scr-shop" class="screen">
+  <h1 style="font-size:20px">🏛 深渊祭坛</h1>
+  <p class="hint">用对局积分兑换开局加持 · 当前积分 <b id="s-bank" style="color:var(--gold)">0</b></p>
+  <div class="buffcards" id="s-grid" style="max-width:420px;margin:0 auto"></div>
+  <button class="btn ghost" id="b-shopback" style="max-width:420px;margin:16px auto 0">返回主页</button>
+</section>
+
+<!-- ============ 图鉴 ============ -->
+<section id="scr-codex" class="screen">
+  <h1 style="font-size:20px">知识图鉴</h1>
+  <p class="hint" id="c-sum"></p>
+  <div class="codexGrid" id="c-grid"></div>
+  <button class="btn ghost" id="b-codexback">返回主页</button>
+</section>
+
+</div>
+<script src="material.js"></script>
+<script>
+'use strict';
+/* ================= 出题管线：分句 → 分词 → 选抽空目标 → 干扰项 ================= */
+const $ = id => document.getElementById(id);
+const rnd = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// 目标词黑名单（虚词/万能词不作挖空答案，但可作干扰项）。整串连续拼接，用 includes 子串匹配
+const STOP_STR = ('的了和是在有与及为对等之或并向从其所按照通过由于关于对于因此所以但是然而并且' +
+  '以及我们它们我国这些那些这个那种各种每个能够可以应当必须需要具有含有属于成为变得' +
+  '出现存在发生发展进行开展落实确保坚持加强推进完善促进提高增强实现形成构建发挥推动优化' +
+  '健全深化扩大加快实施保持着力更加其中基于围绕针对目前当前同时此外另外一方面有关相关' +
+  '主要重要基本不断进一步积极稳步统筹协调工作体系制度机制水平能力领域方面问题任务措施' +
+  '政策要求情况过程基础条件方式方法内容重点突出显著明显日益已经正在将要将会仍是逐步大力' +
+  '切实充分而且不仅如果虽然因为由被把给让向从位于在于之中之间以上以下内外新的更最很之其' +
+  '建设提升强化巩固拓展培育壮大布局支撑引领带动治理管理保障改革' +
+  '探索各类有关深入扎实全面持续坚决突出稳妥有序高效协同联合倡议方案规划纲要总的良好');
+const isStop = w => STOP_STR.includes(w);
+
+let QS = [];        // 题库 [{sentBlank, ans, opts, kp, sentFull}]
+let KPS = [];       // 知识点集合
+let MAT = (typeof MATERIAL !== 'undefined') ? MATERIAL : '';  // 当前材料（可被上传替换）
+
+function tokenize(text) {
+  if (window.Intl && Intl.Segmenter) {
+    const seg = new Intl.Segmenter('zh', { granularity: 'word' });
+    return [...seg.segment(text)].filter(s => s.isWordLike).map(s => s.segment);
+  }
+  return text.match(/[一-龥]{2,12}|\d+(?:\.\d+)?[%％个亿万]?/g) || [];
+}
+
+function buildQuestions() {
+  // 1) 分句
+  const sents = MAT.split(/(?<=[。！？；!?;])|\r?\n/)
+    .map(s => s.replace(/\s+/g, '').replace(/<br\s*\/?>/gi, '').replace(/<[^>]*>/g, '').replace(/[*`|#]/g, '').trim())
+    .filter(s => s.length >= 14 && s.length <= 96 && /[一-龥]/.test(s) && !/PAGEREF|HYPERLINK/.test(s) && !/\d{2,}$/.test(s));
+  // 2) 全文词频
+  const freq = new Map();
+  for (const s of sents) for (const w of tokenize(s)) {
+    if (w.length >= 2 && w.length <= 12 && !isStop(w)) freq.set(w, (freq.get(w) || 0) + 1);
+  }
+  const pool = [...freq.keys()];
+  const hot = pool.filter(w => (freq.get(w) || 0) >= 2);   // 高频词池：大材料时干扰项优先从这里找（性能）
+  const hasDigit = w => /\d|[０-９％%亿万倍]/.test(w);
+  // 3) 逐句选题
+  const out = [], seen = new Set();
+  for (const sent of sents) {
+    const toks = tokenize(sent);
+    let best = null, bestScore = 0;
+    for (const w of toks) {
+      if (w.length < 2 || w.length > 12 || isStop(w)) continue;
+      if (/^\d+$/.test(w)) continue;                            // 纯数字 = 文件条目编号，不作答案
+      if (!/[一-龥0-9０-９]/.test(w)) continue;                  // 必须含中文或数字（排除英文碎片）
+      if (/^[更最较很挺太好]/.test(w)) continue;                 // 程度词（更好/最高/较好…）多个候选都能通，无区分度
+      if (sent.split(w).length - 1 > 1) continue;              // 句中多次出现 → 弃（避免歧义）
+      let sc = 1;
+      if (hasDigit(w)) sc += 4;                                 // 数字/量词信息密度高
+      const fr = freq.get(w) || 0;
+      if (fr >= 3) sc += 3; else if (fr === 2) sc += 2;         // 全文反复出现 → 核心术语
+      if (w.length >= 3 && w.length <= 6) sc += 2;              // 术语常见长度
+      if (/[性化率度力权制感]$/.test(w)) sc += 3;               // 公考爱挖的术语名词后缀
+      if (/(体系|机制|格局|水平|能力|结构|模式|平台|工程|链条|网络|区域)$/.test(w)) sc += 2;
+      if (sc > bestScore) { bestScore = sc; best = w; }
+    }
+    if (!best || bestScore < 3) continue;
+    // 4) 干扰项：同文同类词（长度±2、数字属性一致、非包含关系）
+    const cands = [];
+    for (let relax = 0; relax < 3 && cands.length < 3; relax++) {
+      cands.length = 0;
+      const src = relax < 2 ? hot : pool;                       // 前两级只看高频池
+      for (const d of src) {
+        if (d === best || cands.includes(d)) continue;
+        if (d.includes(best) || best.includes(d)) continue;
+        if (relax < 1 && Math.abs(d.length - best.length) > 2) continue;
+        if (relax < 2 && hasDigit(d) !== hasDigit(best)) continue;
+        cands.push(d);
+      }
+    }
+    if (cands.length < 3) continue;
+    // 公考思路：干扰项优先近形近义（同首字/同尾字/等长），但首字保持多样性避免扎堆
+    const sim = d => (d[0] === best[0] ? 2 : 0) + (d[d.length - 1] === best[best.length - 1] ? 2 : 0) + (d.length === best.length ? 1 : 0);
+    const sorted = cands.sort((a, b) => sim(b) - sim(a)).slice(0, 8);
+    const picks = [];
+    for (const d of sorted) { if (picks.length < 3 && !picks.some(p => p[0] === d[0])) picks.push(d); }
+    for (const d of sorted) { if (picks.length < 3 && !picks.includes(d)) picks.push(d); }
+    const opts = shuffle([best, ...picks]);
+    const key = best + '|' + sent.slice(0, 20);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      sentBlank: sent.replace(best, '＿＿＿＿'),
+      sentFull: sent, ans: best, opts, kp: best
+    });
+  }
+  shuffle(out);
+  return out.slice(0, 320);
+}
+
+/* ================= 存档 ================= */
+const SAVE_KEY = 'tysx_v1';
+let save = { streak: 0, lastDate: '', best: 0, bank: 0, inv: {}, kps: {} };
+try { save = Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (e) {}
+if (!save.inv) save.inv = {};
+const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
+const yesterday = () => { const d = new Date(); d.setDate(d - 1); return d.toLocaleDateString('sv-SE'); };
+
+/* ================= 屏幕切换 ================= */
+function go(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  $(id).classList.add('on');
+}
+
+/* ================= 主页渲染 ================= */
+function renderHome() {
+  $('h-streak').textContent = save.streak;
+  $('h-best').textContent = save.best;
+  $('h-bank').textContent = save.bank || 0;
+  $('h-deep').textContent = save.bestWave || 0;
+  const total = KPS.length;
+  const lit = KPS.filter(k => save.kps[k]).length;
+  $('h-kp').textContent = lit + '/' + total;
+  $('h-qcount').textContent = `题库 ${QS.length} 题 · 知识点 ${total} 个 · 点击选项作答，答错扣一颗心`;
+}
+
+/* ================= 对局 ================= */
+const B = {
+  wave: 0, hp: 3, maxHp: 3, score: 0, combo: 0, bestCombo: 0,
+  timeBonus: 0, mult: 1, shields: 0, insight: 0,
+  bloodMult: 1, wrongPenalty: 0, timeCurse: 0, eventBlood: 0, healBanned: false,
+  timer: null, tLeft: 0, tTotal: 0, cur: null, wrongQueue: [], seenKp: new Set(), litKp: 0
+};
+const BUFF_DEFS = {
+  heal:    { n: '回春术',   d: '回复 1 颗心（上限 6）', ok: () => B.hp < 6 && !B.healBanned, apply() { B.maxHp = Math.max(B.maxHp, 6); B.hp = Math.min(6, B.hp + 1); } },
+  time:    { n: '时之砂',   d: '答题时限永久 +1.5 秒', ok: () => B.timeBonus < 4500, apply() { B.timeBonus += 1500; } },
+  mult:    { n: '聚灵阵',   d: '得分倍率永久 ×1.3', ok: () => B.mult < 2.3, apply() { B.mult *= 1.3; } },
+  shield:  { n: '磐石盾',   d: '获得 1 层答错保护（自动抵消一次扣心）', ok: () => B.shields < 3, apply() { B.shields++; } },
+  insight: { n: '洞察之眼', d: '接下来 3 题自动排除一个错误选项', ok: () => true, apply() { B.insight += 3; } },
+};
+const BUFF_CN = { heal: '❤回春', time: '⏳时之砂', mult: '✦聚灵', shield: '🛡磐石', insight: '👁洞察' };
+/* 诅咒（第 30 波起混入三选一）：高风险换高收益 */
+const CURSE_DEFS = {
+  blood:    { n: '嗜血契约', d: '得分永久 ×1.6，但之后每次答错额外扣 1 颗心（可叠 2 次）', ok: () => B.bloodMult < 2.6, apply() { B.bloodMult *= 1.6; B.wrongPenalty = Math.min(2, B.wrongPenalty + 1); } },
+  hourglass:{ n: '沙漏',     d: '答题时限永久 −2 秒，得分永久 ×1.5', ok: () => B.timeCurse < 4000, apply() { B.timeCurse += 2000; B.mult *= 1.5; } },
+  silence:  { n: '枯竭',     d: `永久禁用回春术，立即获得 ${300} 分`, ok: () => !B.healBanned, apply() { B.healBanned = true; B.score += 300 + B.wave * 10; } },
+};
+/* 深渊事件（每 20 波） */
+const EVENTS = [
+  { n: '血月', d: '接下来 10 波：时限 −30%，但得分 ×2', f() { B.eventBlood = 10; } },
+  { n: '献祭', d: '失去 1 颗心（不会致命），立即获得 500 分与 1 层磐石盾', f() { B.hp = Math.max(1, B.hp - 1); B.score += 500; B.shields++; } },
+  { n: '宝库', d: '连击 +5，时之砂 +1.5 秒', f() { B.combo += 5; B.timeBonus += 1500; } },
+  { n: '回响', d: '生命回满至 3 颗，得分 +200', f() { B.hp = Math.max(B.hp, 3); B.score += 200; } },
+];
+/* 深渊层主题色与章节名 */
+const THEMES = [['#7c6cff', '#2fd8fe'], ['#ff6c9d', '#ffd166'], ['#ff8c42', '#ff5d6c'], ['#39d98a', '#2fd8fe'], ['#b06cff', '#ff5d6c']];
+const CHAPTERS = ['启程', '产业体系', '科技自强', '国内市场', '经济体制', '对外开放', '乡村振兴', '区域协调', '文化繁荣', '共同富裕', '绿色转型', '平安中国', '国防军队', '港澳台与外交', '党的建设'];
+const tierOf = w => Math.floor((w - 1) / 10) + 1;
+const chapterOf = w => { const t = tierOf(w); return t <= 15 ? CHAPTERS[t - 1] : '无尽之环 ×' + (t - 15); };
+function setTierTheme(tier) {
+  const t = THEMES[Math.floor((tier - 1) / 3) % THEMES.length];
+  document.documentElement.style.setProperty('--neon', t[0]);
+  document.documentElement.style.setProperty('--cyan', t[1]);
+}
+
+/* ================= 深渊祭坛（积分消耗） ================= */
+const SHOP = [
+  { id: 'heart',  icon: '🚩', n: '先攻战旗', price: 300, d: '下一局开局多 1 颗心' },
+  { id: 'time',   icon: '⏳', n: '时之刻印', price: 250, d: '下一局开局时限 +1 秒' },
+  { id: 'eye',    icon: '👁', n: '天眼符',   price: 400, d: '下一局开局洞察之眼 ×2' },
+  { id: 'shield', icon: '🛡', n: '磐石铠甲', price: 500, d: '下一局开局磐石盾 ×1' },
+  { id: 'revive', icon: '✝', n: '重生十字', price: 800, d: '下一局死亡时原地复活一次' },
+];
+function renderShop() {
+  $('s-bank').textContent = save.bank || 0;
+  const grid = $('s-grid'); grid.innerHTML = '';
+  SHOP.forEach(g => {
+    const own = save.inv[g.id] || 0;
+    const can = (save.bank || 0) >= g.price;
+    const c = document.createElement('div');
+    c.className = 'bcard';
+    c.innerHTML = `<div class="bn">${g.icon} ${g.n}<span style="float:right;color:${can ? 'var(--gold)' : 'var(--bad)'}">${g.price} 分</span></div><div class="bd">${g.d}${own ? ` · 已备 ${own} 份` : ''}</div>`;
+    if (!can) c.style.opacity = .45;
+    c.onclick = () => {
+      if ((save.bank || 0) < g.price) return;
+      save.bank -= g.price;
+      save.inv[g.id] = own + 1;
+      persist(); renderShop();
+    };
+    grid.appendChild(c);
+  });
+}
+
+function startBattle() {
+  Object.assign(B, {
+    wave: 0, hp: 3, maxHp: 3, score: 0, combo: 0, bestCombo: 0,
+    timeBonus: 0, mult: 1, shields: 0, insight: 0, revives: 0,
+    bloodMult: 1, wrongPenalty: 0, timeCurse: 0, eventBlood: 0, healBanned: false,
+    timer: null, tLeft: 0, tTotal: 0,
+    cur: null, wrongQueue: [], seenKp: new Set(), litKp: 0
+  });
+  // 深渊祭坛道具：开局自动启用各 1 份
+  const use = id => { if (save.inv[id] > 0) { save.inv[id]--; return true; } return false; };
+  if (use('heart')) B.hp = 4;
+  if (use('time')) B.timeBonus = 1000;
+  if (use('eye')) B.insight = 2;
+  if (use('shield')) B.shields = 1;
+  if (use('revive')) B.revives = 1;
+  persist();
+  go('scr-battle');
+  nextWave();
+}
+function drawHp() { $('t-hp').textContent = '❤'.repeat(B.hp) + '🖤'.repeat(Math.max(0, B.maxHp - B.hp)); }
+function drawBuffs() {
+  const good = [], bad = [];
+  if (B.mult > 1) good.push(`${BUFF_CN.mult}×${B.mult.toFixed(2)}`);
+  if (B.timeBonus) good.push(`${BUFF_CN.time}+${(B.timeBonus / 1000).toFixed(1)}s`);
+  if (B.shields) good.push(`${BUFF_CN.shield}×${B.shields}`);
+  if (B.insight) good.push(`${BUFF_CN.insight}×${B.insight}`);
+  if (B.bloodMult > 1) bad.push(`🩸嗜血×${B.bloodMult.toFixed(1)}`);
+  if (B.timeCurse) bad.push(`⏳沙漏−${(B.timeCurse / 1000).toFixed(1)}s`);
+  if (B.healBanned) bad.push('🚫回春禁用');
+  if (B.eventBlood) bad.push(`🌙血月 · 还剩 ${B.eventBlood} 波`);
+  const g = t => `<span class="buff">${t}</span>`;
+  const b = t => `<span class="buff" style="color:var(--bad);border-color:var(--bad)">${t}</span>`;
+  $('t-buffs').innerHTML = good.map(g).join('') + bad.map(b).join('');
+}
+function pickQuestion() {
+  let q;
+  if (B.wrongQueue.length && Math.random() < 0.7) {
+    q = B.wrongQueue.shift();                       // 错题优先重现
+  } else {
+    const unseen = QS.filter(x => !B.seenKp.has(x.kp));
+    if (unseen.length) { q = rnd(unseen); B.seenKp.add(q.kp); }
+    else {
+      // 题库进入循环：随机抽 10 个候选，取最久没出现过的（LRU），缓解重复感
+      let oldest = null;
+      for (let i = 0; i < 10; i++) { const c = rnd(QS); if (!oldest || (c._s || 0) < (oldest._s || 0)) oldest = c; }
+      q = oldest;
+    }
+  }
+  q._s = B.wave;
+  return q;
+}
+function nextWave() {
+  B.wave++;
+  const boss = B.wave % 5 === 0;
+  const tier = tierOf(B.wave);
+  setTierTheme(tier);
+  const q = pickQuestion();
+  B.cur = q;
+  drawHp(); drawBuffs();
+  $('t-wave').textContent = B.wave;
+  $('t-combo').textContent = B.combo;
+  $('t-score').textContent = B.score;
+  const tag = $('t-tag');
+  tag.textContent = boss
+    ? `⚔ BOSS 波 · 深渊第 ${tier} 层【${chapterOf(B.wave)}】· 双倍得分`
+    : `深渊第 ${tier} 层【${chapterOf(B.wave)}】 · 知识点 ${KPS.indexOf(q.kp) + 1}/${KPS.length}`;
+  tag.className = 'waveTag' + (boss ? ' boss' : '');
+  // 渲染题面
+  $('t-q').innerHTML = q.sentBlank.replace('＿＿＿＿', '<span class="blank">＿＿＿＿</span>');
+  const feed = $('t-feed'); feed.textContent = ''; feed.className = 'feed';
+  // 选项
+  let opts = q.opts;
+  if (B.insight > 0) {  // 洞察：隐藏一个错误项
+    const wrongs = opts.filter(o => o !== q.ans);
+    const hide = rnd(wrongs);
+    opts = opts.map(o => o === hide ? null : o);
+  }
+  const box = $('t-opts'); box.innerHTML = '';
+  opts.forEach((o, i) => {
+    if (o === null) { const d = document.createElement('div'); d.className = 'opt dim'; d.textContent = '— 已排除 —'; box.appendChild(d); return; }
+    const b = document.createElement('button');
+    b.className = 'opt';
+    b.innerHTML = (window.matchMedia('(pointer:fine)').matches ? `<kbd>${i + 1}</kbd>` : '') + o;
+    b.onclick = () => answer(o, b);
+    box.appendChild(b);
+  });
+  if (B.insight > 0) B.insight--;
+  // 计时
+  const base = Math.max(3000, (boss ? 5000 : 8000) - (tier - 1) * 400 - B.timeCurse + B.timeBonus);
+  B.tTotal = Math.max(2400, Math.round(base * (B.eventBlood > 0 ? 0.7 : 1)));
+  B.tLeft = B.tTotal;
+  clearInterval(B.timer);
+  B.timer = setInterval(tick, 100);
+  tick();
+  if (B.eventBlood > 0) B.eventBlood--;
+}
+function tick() {
+  B.tLeft -= 100;
+  const pct = Math.max(0, B.tLeft / B.tTotal * 100);
+  const bar = $('t-bar');
+  bar.style.width = pct + '%';
+  bar.className = 'timerbar' + (pct < 30 ? ' low' : '');
+  if (B.tLeft <= 0) answer(null);
+}
+function answer(pick, btn) {
+  clearInterval(B.timer);
+  const q = B.cur, feed = $('t-feed');
+  document.querySelectorAll('.opt').forEach(el => el.style.pointerEvents = 'none');
+  const rightEl = [...document.querySelectorAll('.opt')].find(el => el.textContent.includes(q.ans));
+  const boss = B.wave % 5 === 0;
+  if (pick === q.ans) {
+    if (btn) btn.classList.add('right');
+    const comboMult = 1 + Math.min(B.combo, 10) * 0.1;
+    const gain = Math.round(10 * comboMult * (boss ? 2 : 1) * B.mult * B.bloodMult * (B.eventBlood > 0 ? 2 : 1));
+    B.score += gain; B.combo++; B.bestCombo = Math.max(B.bestCombo, B.combo);
+    feed.textContent = `+${gain}` + (B.combo > 2 ? ` · ${B.combo} 连击！` : '');
+    feed.className = 'feed ok';
+    const rec = save.kps[q.kp] || { c: 0, w: 0, last: '' };
+    if (!rec.c && !rec.w) B.litKp++;      // 首次点亮
+    rec.c++; rec.last = 'ok'; save.kps[q.kp] = rec;
+  } else {
+    if (rightEl) rightEl.classList.add('right');
+    if (btn) btn.classList.add('wrong');
+    B.combo = 0;
+    feed.textContent = '答错/超时 · 正确答案：' + q.ans;
+    feed.className = 'feed bad';
+    const rec = save.kps[q.kp] || { c: 0, w: 0, last: '' };
+    rec.w++; rec.last = 'bad'; save.kps[q.kp] = rec;
+    if (!B.seenKp.has(q.kp)) B.seenKp.add(q.kp);
+    B.wrongQueue.push(q);                  // 错题重进队列
+    if (B.shields > 0) { B.shields--; feed.textContent += ' · 🛡磐石盾抵消！'; drawHp(); }
+    else { B.hp -= 1 + B.wrongPenalty; drawHp(); }
+  }
+  persist();
+  $('t-combo').textContent = B.combo;
+  $('t-score').textContent = B.score;
+  drawBuffs();
+  if (B.hp <= 0) {
+    if (B.revives > 0) {          // 重生十字：原地复活
+      B.revives--; B.hp = 2; drawHp(); drawBuffs();
+      feed.textContent = '✝ 重生十字生效！原地复活';
+      feed.className = 'feed ok';
+      setTimeout(nextWave, 1100);
+      return;
+    }
+    setTimeout(gameOver, 1000); return;
+  }
+  setTimeout(() => {
+    if (B.wave % 20 === 0) offerEvent();
+    else if (B.wave % 5 === 0) offerBuff();
+    else nextWave();
+  }, 1100);
+}
+function offerBuff() {
+  const pool = Object.entries(BUFF_DEFS).filter(([, v]) => v.ok());
+  if (B.wave >= 30) pool.push(...Object.entries(CURSE_DEFS).filter(([, v]) => v.ok()));   // 诅咒混入
+  const picks = shuffle(pool).slice(0, 3);
+  const box = $('buff-cards'); box.innerHTML = '';
+  picks.forEach(([id, def]) => {
+    const c = document.createElement('div');
+    c.className = 'bcard';
+    const isCurse = !!CURSE_DEFS[id];
+    c.innerHTML = `<div class="bn"${isCurse ? ' style="color:var(--bad)"' : ''}>${isCurse ? '☠' : BUFF_CN[id]} ${def.n}</div><div class="bd">${def.d}</div>`;
+    if (isCurse) c.style.borderColor = 'var(--bad)';
+    c.onclick = () => { def.apply(); $('mask-buff').classList.remove('on'); drawHp(); drawBuffs(); nextWave(); };
+    box.appendChild(c);
+  });
+  $('mask-title').textContent = B.wave >= 30 ? '✨ 波次奖励 · 三选一（☠ 诅咒高风险高收益）' : '✨ 波次奖励 · 三选一';
+  $('mask-buff').classList.add('on');
+}
+function offerEvent() {
+  const picks = shuffle([...EVENTS]).slice(0, 3);
+  const box = $('buff-cards'); box.innerHTML = '';
+  picks.forEach(ev => {
+    const c = document.createElement('div');
+    c.className = 'bcard';
+    c.innerHTML = `<div class="bn">🔮 ${ev.n}</div><div class="bd">${ev.d}</div>`;
+    c.onclick = () => { ev.f(); $('mask-buff').classList.remove('on'); drawHp(); drawBuffs(); nextWave(); };
+    box.appendChild(c);
+  });
+  $('mask-title').textContent = `🔮 深渊事件 · 第 ${B.wave} 波 · 三选一`;
+  $('mask-buff').classList.add('on');
+}
+function gameOver() {
+  clearInterval(B.timer);
+  $('r-score').textContent = B.score;
+  $('r-wave').textContent = B.wave;
+  $('r-combo').textContent = B.bestCombo;
+  $('r-newkp').textContent = B.litKp;
+  const tier = tierOf(B.wave);
+  const isRecord = B.wave >= 10 && B.wave > (save.bestWave || 0);
+  if (isRecord) save.bestWave = B.wave;
+  $('r-title').textContent = isRecord ? `新纪录 · 深渊第 ${tier} 层！` : (B.wave >= 15 ? '全身而退！' : '倒在题渊之中…');
+  // 打卡
+  const t = today();
+  if (save.lastDate !== t) {
+    save.streak = save.lastDate === yesterday() ? save.streak + 1 : 1;
+    save.lastDate = t;
+  }
+  if (B.score > save.best) save.best = B.score;
+  save.bank = (save.bank || 0) + B.score;   // 积分入账（深渊祭坛货币）
+  persist();
+  $('r-streak').innerHTML = `🔥 连续打卡 <b>${save.streak}</b> 天 · 历史最深 <b>${save.bestWave || 0}</b> 波 · 积分 <b style="color:var(--gold)">+${B.score}</b>（共 ${save.bank}）`;
+  const miss = KPS.filter(k => save.kps[k] && save.kps[k].last === 'bad');
+  $('r-miss').innerHTML = miss.length
+    ? `<span class="dot" style="background:var(--bad)"></span>本局失守 ${miss.length} 个知识点（已加入复习队列）：<span style="color:var(--sub)">${miss.slice(0, 12).join('、')}${miss.length > 12 ? '…' : ''}</span>`
+    : `<span class="dot" style="background:var(--ok)"></span>本局零失守，漂亮！`;
+  go('scr-result');
+}
+
+/* ================= 图鉴 ================= */
+function renderCodex() {
+  const m = KPS.filter(k => save.kps[k] && save.kps[k].last === 'ok').length;
+  const w = KPS.filter(k => save.kps[k] && save.kps[k].last === 'bad').length;
+  $('c-sum').textContent = `已点亮 ${m + w}/${KPS.length} · 掌握 ${m} · 待复习 ${w}`;
+  const grid = $('c-grid'); grid.innerHTML = '';
+  KPS.forEach(k => {
+    const rec = save.kps[k];
+    const cls = !rec ? 'u' : (rec.last === 'ok' ? 'm' : 'w');
+    const d = document.createElement('div');
+    d.className = 'kp ' + cls;
+    const sent = (QS.find(q => q.kp === k) || {}).sentFull || '';
+    d.title = sent;
+    d.innerHTML = `<span>${k}</span><span class="tag">${!rec ? '未遇' : rec.last === 'ok' ? '✓ ' + rec.c : '✗ 复习'}</span>`;
+    grid.appendChild(d);
+  });
+}
+
+/* ================= 换材料 ================= */
+$('f-mat').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!confirm('更换材料将重置本套题库的图鉴进度（打卡与最高分保留），继续？')) { e.target.value = ''; return; }
+  const restore = msg => {   // 失败：回滚并提示
+    MAT = oldMat; save.kps = oldKps; rebuild(); renderHome();
+    alert(msg);
+  };
+  const oldMat = MAT, oldKps = save.kps;
+  $('h-qcount').textContent = '正在出题，大材料约需几秒…';
+  const r = new FileReader();
+  r.onerror = () => restore('文件读取失败，请重试。');
+  r.onload = () => setTimeout(() => {
+    try {
+      const text = String(r.result);
+      const bad = (text.match(/\uFFFD/g) || []).length;    // U+FFFD 替换符 = 编码不对
+      if (text.length > 500 && bad > text.length * 0.02) {
+        restore('文件不是 UTF-8 编码，中文读出来全是乱码。请用记事本打开 → 文件 → 另存为 → 编码选「UTF-8」后重试。');
+        return;
+      }
+      MAT = text; save.kps = {};
+      rebuild();
+      if (!QS.length) { restore('这份材料没有识别出可出题的句子（需要包含 14～96 字的完整中文段落）。换一份材料试试吧。'); return; }
+      persist();
+      $('h-material').textContent = '《' + f.name.replace(/\.(txt|md)$/i, '') + '》';
+      renderHome();
+    } catch (err) {
+      restore('出题出错：' + (err && err.message || err));
+    }
+  }, 50);
+  r.readAsText(f, 'utf-8');
+});
+
+/* ================= 启动 ================= */
+function rebuild() {
+  QS = buildQuestions();
+  KPS = [...new Set(QS.map(q => q.kp))];
+}
+$('b-start').onclick = () => { if (QS.length) startBattle(); };
+$('b-again').onclick = startBattle;
+$('b-home').onclick = () => { renderHome(); go('scr-home'); };
+$('b-codex').onclick = () => { renderCodex(); go('scr-codex'); };
+$('b-codexback').onclick = () => { renderHome(); go('scr-home'); };
+$('b-shop').onclick = () => { renderShop(); go('scr-shop'); };
+$('b-shopback').onclick = () => { renderHome(); go('scr-home'); };
+document.addEventListener('keydown', e => {
+  if (!$('scr-battle').classList.contains('on')) return;
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 4) { const b = document.querySelectorAll('.opt')[n - 1]; if (b && !b.classList.contains('dim')) b.click(); }
+});
+rebuild();
+renderHome();
+</script>
+</body>
+</html>
